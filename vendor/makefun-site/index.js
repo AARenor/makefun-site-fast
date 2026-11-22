@@ -21,10 +21,26 @@ export const RESERVED = Object.freeze(['posts', 'tags', 'page']);
 /** Code-unit order (never the locale's). */
 const byCodeUnits = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 
+/** Which code units split words: exactly the set RegExp \s matches, as a table. */
+const SPACE_CODE = (() => {
+  const t = new Uint8Array(0x10000);
+  for (const c of [9, 10, 11, 12, 13, 32, 160, 5760, 8232, 8233, 8239, 8287, 12288, 65279]) t[c] = 1;
+  for (let c = 8192; c <= 8202; c++) t[c] = 1;
+  return t;
+})();
+
 /** The words of a body: its runs of characters other than whitespace. */
 function wordsOf(text) {
-  const m = text.match(/\S+/g);
-  return m === null ? 0 : m.length;
+  let n = 0;
+  let inWord = false;
+  for (let i = 0; i < text.length; i++) {
+    if (SPACE_CODE[text.charCodeAt(i)] === 1) inWord = false;
+    else if (!inWord) {
+      inWord = true;
+      n++;
+    }
+  }
+  return n;
 }
 
 /** `rel` (a link's path, "/"-separated) from the directory `dir` of a source, or null when it climbs out of the root. */

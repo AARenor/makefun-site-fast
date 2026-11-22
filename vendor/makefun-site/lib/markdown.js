@@ -127,67 +127,90 @@ function findSingleStar(s, from) {
   return -1;
 }
 
+/** The HTML escape of a code unit, for the five the dialect escapes (by code of & < > " '). */
+const HTML_ESCAPE = [];
+HTML_ESCAPE[38] = '&amp;';
+HTML_ESCAPE[60] = '&lt;';
+HTML_ESCAPE[62] = '&gt;';
+HTML_ESCAPE[34] = '&quot;';
+HTML_ESCAPE[39] = '&#39;';
+
 /** `s` rendered inline; `env.link(target)` is a link's href. */
 export function inline(s, env) {
   let out = '';
+  let start = 0;
   let i = 0;
-  while (i < s.length) {
-    const c = s[i];
-    if (c === '\\' && i + 1 < s.length && ESCAPABLE.has(s[i + 1])) {
-      out += escapeHtml(s[i + 1]);
-      i += 2;
+  const n = s.length;
+  while (i < n) {
+    const c = s.charCodeAt(i);
+    if (c === 92) {
+      if (i + 1 < n && ESCAPABLE.has(s[i + 1])) {
+        out += s.slice(start, i) + escapeHtml(s[i + 1]);
+        i += 2;
+        start = i;
+        continue;
+      }
+      i++;
       continue;
     }
-    if (c === '`') {
+    if (c === 96) {
       const j = s.indexOf('`', i + 1);
       if (j > i + 1) {
-        out += `<code>${escapeHtml(s.slice(i + 1, j))}</code>`;
+        out += `${s.slice(start, i)}<code>${escapeHtml(s.slice(i + 1, j))}</code>`;
         i = j + 1;
-      } else {
-        out += '`';
-        i++;
+        start = i;
+        continue;
       }
+      i++;
       continue;
     }
-    if (c === '*') {
-      if (s[i + 1] === '*') {
+    if (c === 42) {
+      if (s.charCodeAt(i + 1) === 42) {
         const j = findUnescaped(s, '**', i + 2);
         if (j > i + 2) {
-          out += `<strong>${inline(s.slice(i + 2, j), env)}</strong>`;
+          out += `${s.slice(start, i)}<strong>${inline(s.slice(i + 2, j), env)}</strong>`;
           i = j + 2;
-        } else {
-          out += '**';
-          i += 2;
+          start = i;
+          continue;
         }
+        i += 2;
         continue;
       }
       const j = findSingleStar(s, i + 1);
       if (j > i + 1) {
-        out += `<em>${inline(s.slice(i + 1, j), env)}</em>`;
+        out += `${s.slice(start, i)}<em>${inline(s.slice(i + 1, j), env)}</em>`;
         i = j + 1;
-      } else {
-        out += '*';
-        i++;
-      }
-      continue;
-    }
-    if (c === '[') {
-      const k = findUnescaped(s, ']', i + 1);
-      const m = k !== -1 && s[k + 1] === '(' ? s.indexOf(')', k + 2) : -1;
-      const target = m === -1 ? '' : s.slice(k + 2, m);
-      if (target !== '' && !/\s/.test(target)) {
-        out += `<a href="${escapeHtml(env.link(target))}">${inline(s.slice(i + 1, k), env)}</a>`;
-        i = m + 1;
+        start = i;
         continue;
       }
-      out += '[';
       i++;
       continue;
     }
-    out += escapeHtml(c);
+    if (c === 91) {
+      const k = findUnescaped(s, ']', i + 1);
+      const m = k !== -1 && s.charCodeAt(k + 1) === 40 ? s.indexOf(')', k + 2) : -1;
+      const target = m === -1 ? '' : s.slice(k + 2, m);
+      if (target !== '' && !/\s/.test(target)) {
+        out += `${s.slice(start, i)}<a href="${escapeHtml(env.link(target))}">${inline(s.slice(i + 1, k), env)}</a>`;
+        i = m + 1;
+        start = i;
+        continue;
+      }
+      i++;
+      continue;
+    }
+    if (c < 128) {
+      const rep = HTML_ESCAPE[c];
+      if (rep !== undefined) {
+        out += s.slice(start, i) + rep;
+        i++;
+        start = i;
+        continue;
+      }
+    }
     i++;
   }
-  return out;
+  return out + s.slice(start);
 }
 
 /**
@@ -204,34 +227,34 @@ export function renderMarkdown(src, env) {
       case 'heading': {
         const id = uniqueSlug(slugify(t.text), ids);
         const html = inline(t.text, env);
-        blocks.push(`<h${t.depth} id="${id}">${html}</h${t.depth}>`);
+        blocks.push(`<h${t.depth} id="${id}">${html}</h${t.depth}>\n`);
         if (t.depth === 2 || t.depth === 3) toc.push({ level: t.depth, id, html });
         break;
       }
       case 'code': {
         const cls = t.lang === '' ? '' : ` class="language-${escapeHtml(t.lang)}"`;
-        blocks.push(`<pre><code${cls}>${t.lines.map((l) => `${escapeHtml(l)}\n`).join('')}</code></pre>`);
+        blocks.push(`<pre><code${cls}>${t.lines.map((l) => `${escapeHtml(l)}\n`).join('')}</code></pre>\n`);
         break;
       }
       case 'hr':
-        blocks.push('<hr>');
+        blocks.push('<hr>\n');
         break;
       case 'blockquote':
-        blocks.push(t.lines.length === 0 ? '<blockquote>\n</blockquote>' : `<blockquote>\n<p>${inline(t.lines.join('\n'), env)}</p>\n</blockquote>`);
+        blocks.push(t.lines.length === 0 ? '<blockquote>\n</blockquote>\n' : `<blockquote>\n<p>${inline(t.lines.join('\n'), env)}</p>\n</blockquote>\n`);
         break;
       case 'list': {
         const tag = t.ordered ? 'ol' : 'ul';
         const open = t.ordered && t.start !== 1 ? `<ol start="${t.start}">` : `<${tag}>`;
-        blocks.push(`${open}\n${t.items.map((item) => `<li>${inline(item, env)}</li>\n`).join('')}</${tag}>`);
+        blocks.push(`${open}\n${t.items.map((item) => `<li>${inline(item, env)}</li>\n`).join('')}</${tag}>\n`);
         break;
       }
       case 'paragraph': {
         const html = inline(t.text, env);
         if (excerpt === null) excerpt = html;
-        blocks.push(`<p>${html}</p>`);
+        blocks.push(`<p>${html}</p>\n`);
         break;
       }
     }
   }
-  return { html: blocks.map((b) => `${b}\n`).join(''), toc, excerpt: excerpt ?? '' };
+  return { html: blocks.join(''), toc, excerpt: excerpt ?? '' };
 }

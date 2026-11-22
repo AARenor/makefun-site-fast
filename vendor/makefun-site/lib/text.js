@@ -3,9 +3,23 @@
 /** The HTML escape table, in this order: & < > " ' (README.md). */
 const ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 
-/** `text` with & < > " and ' escaped. */
+/** `text` with & < > " and ' escaped. Returns `text` itself when it holds none of them. */
 export function escapeHtml(text) {
-  return text.replace(/[&<>"']/g, (c) => ESCAPES[c]);
+  let out = '';
+  let start = 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    let rep = null;
+    if (c === 38) rep = ESCAPES['&'];
+    else if (c === 60) rep = ESCAPES['<'];
+    else if (c === 62) rep = ESCAPES['>'];
+    else if (c === 34) rep = ESCAPES['"'];
+    else if (c === 39) rep = ESCAPES["'"];
+    else continue;
+    out += text.slice(start, i) + rep;
+    start = i + 1;
+  }
+  return start === 0 ? text : out + text.slice(start);
 }
 
 /** The most characters a slug keeps before a collision suffix. */
